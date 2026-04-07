@@ -1,0 +1,1 @@
+CALL f1_data_lakehouse.bronze.sp_load_dim_circuit();
