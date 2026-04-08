@@ -1,4 +1,3 @@
-
 CREATE OR REPLACE PROCEDURE f1_data_lakehouse.bronze.sp_load_fact_race_result()
 SQL SECURITY INVOKER
 AS
@@ -29,126 +28,8 @@ BEGIN
     SET race_id = NULL ;
           -- pass a specific raceId for incremental load,
                                -- or leave NULL to reload everything
-                               
-  WITH  qualifying_ms AS (
-        SELECT
-        raceId,
-        driverId,
-        constructorId,
-        qualifying_position,
-
-  q1_minute + q1_sec + q1_ms AS q1_time_ms,
-  q2_minute + q2_sec + q2_ms AS q2_time_ms,
-  q3_minute + q3_sec + q3_ms AS q3_time_ms
-  FROM
-(
-SELECT
-    q.raceId,
-    q.driverId,
-    q.constructorId,
-    q.position AS qualifying_position,
-
-CASE 
-  WHEN q1 IS NOT NULL AND TRIM(q1) <> '' AND split(trim(q1), ':')[0] RLIKE '^[0-9]+$'
-  THEN CAST(split(trim(q1), ':')[0] AS INT) * 60000
-  ELSE 0
-END AS q1_minute,
-
-CASE
-  WHEN q1 IS NOT NULL AND TRIM(q1) <> ''  AND split(trim(q1), ':')[0] RLIKE '^[0-9]+$'
-       AND size(split(q1, ':')) > 1    
-  THEN CAST(split(split(q1, ':')[1], '\\.')[0] AS INT) * 1000
-  ELSE 0
-END AS q1_sec,
-
-CASE
-  WHEN q1 IS NOT NULL AND TRIM(q1) <> '' AND split(trim(q1), ':')[0] RLIKE '^[0-9]+$'
-       AND size(split(q1, ':')) > 1      
-  THEN CAST(split(split(q1, ':')[1], '\\.')[1] AS INT) 
-  ELSE 0
-END AS q1_ms,
-
-CASE 
-  WHEN q2 IS NOT NULL AND TRIM(q2) <> '' AND split(trim(q2), ':')[0] RLIKE '^[0-9]+$'
-  THEN CAST(split(trim(q2), ':')[0] AS INT) * 60000
-  ELSE 0
-END AS q2_minute,
-
-CASE
-  WHEN q2 IS NOT NULL AND TRIM(q2) <> '' AND split(trim(q2), ':')[0] RLIKE '^[0-9]+$'
-       AND size(split(q2, ':')) > 1      
-  THEN CAST(split(split(q2, ':')[1], '\\.')[0] AS INT) * 1000
-  ELSE 0
-END AS q2_sec,
-
-CASE
-  WHEN q2 IS NOT NULL AND TRIM(q2) <> '' AND split(trim(q2), ':')[0] RLIKE '^[0-9]+$'
-       AND size(split(q2, ':')) > 1      
-  THEN CAST(split(split(q2, ':')[1], '\\.')[1] AS INT) 
-  ELSE 0
-END AS q2_ms,
-
-CASE 
-  WHEN q3 IS NOT NULL AND TRIM(q3) <> '' AND split(trim(q3), ':')[0] RLIKE '^[0-9]+$'
-  THEN CAST(split(trim(q3), ':')[0] AS INT) * 60000
-  ELSE 0
-END AS q3_minute,
-
-CASE
-  WHEN q3 IS NOT NULL AND TRIM(q3) <> ''  AND split(trim(q3), ':')[0] RLIKE '^[0-9]+$'
-       AND size(split(q3, ':')) > 1    
-  THEN CAST(split(split(q3, ':')[1], '\\.')[0] AS INT) * 1000
-  ELSE 0
-END AS q3_sec,
-
-CASE
-  WHEN q3 IS NOT NULL 
-       AND TRIM(q3) <> '' 
-       AND split(trim(q3), ':')[0] RLIKE '^[0-9]+$'
-       AND size(split(q3, ':')) > 1      
-  THEN CAST(split(split(q3, ':')[1], '\\.')[1] AS INT) 
-  ELSE 0
-END AS q3_ms
-
-FROM f1_data_lakehouse.bronze.qualifying q
-
-)
-    ),
- 
-    -- Helper CTE: aggregate pit stop stats per race + driver
-    pit_agg AS (
-        SELECT
-            raceId,
-            driverId,
-            COUNT(*) AS pit_stop_count,
-            SUM(milliseconds) AS total_pit_time_ms,
-            AVG(CAST(milliseconds AS DECIMAL)) AS avg_pit_time_ms
-        FROM f1_data_lakehouse.bronze.pit_stops
-        GROUP BY raceId, driverId
-    ),
- 
-    -- Helper CTE: driver championship standings for this race
-    driver_standings AS (
-        SELECT
-            raceId,
-            driverId,
-            points     AS driver_champ_points,
-            position   AS driver_champ_position,
-            wins       AS driver_champ_wins
-        FROM f1_data_lakehouse.bronze.driver_standings
-    ),
- 
-    -- Helper CTE: constructor race-level points
-    constructor_pts AS (
-        SELECT
-            raceId,
-            constructorId,
-            points AS constructor_race_points
-        FROM f1_data_lakehouse.bronze.constructors_results
-    )
- 
-    -- MAIN INSERT — delete + reload for the target race(s), then insert
-    -- (full truncate-reload pattern; swap for MERGE if you need idempotency)
+                                             
+  TRUNCATE TABLE f1_data_lakehouse.silver.FACT_RACE_RESULT;
  
     INSERT INTO f1_data_lakehouse.silver.FACT_RACE_RESULT (
         race_key,
@@ -200,6 +81,125 @@ FROM f1_data_lakehouse.bronze.qualifying q
         -- Derived
         positions_gained
     )
+     WITH  qualifying_ms AS (
+        SELECT
+        raceId,
+        driverId,
+        constructorId,
+        qualifying_position,
+
+  q1_minute + q1_sec + q1_ms AS q1_time_ms,
+  q2_minute + q2_sec + q2_ms AS q2_time_ms,
+  q3_minute + q3_sec + q3_ms AS q3_time_ms
+  FROM
+(   
+
+SELECT
+    q.raceId,
+    q.driverId,
+    q.constructorId,
+    q.position AS qualifying_position,
+
+CASE 
+  WHEN q1 IS NOT NULL AND TRIM(q1) <> '' AND split(trim(q1), ':')[0] RLIKE '^[0-9]+$'
+  THEN CAST(split(trim(q1), ':')[0] AS INT) * 60000
+  ELSE 0
+END AS q1_minute,
+
+CASE
+  WHEN q1 IS NOT NULL AND TRIM(q1) <> '' AND split(trim(q1), ':')[0] RLIKE '^[0-9]+$'
+       AND size(split(q1, ':')) > 1      
+  THEN CAST(get(split(get(split(q1, ':'), 1), '\\.'), 0) AS INT) * 1000
+  ELSE 0
+END AS q1_sec,
+
+CASE
+  WHEN q1 IS NOT NULL AND TRIM(q1) <> '' AND split(trim(q1), ':')[0] RLIKE '^[0-9]+$'
+       AND size(split(q1, ':')) > 1      
+  THEN CAST(get(split(get(split(q1, ':'), 1), '\\.'), 1) AS INT) 
+  ELSE 0
+END AS q1_ms,
+
+CASE 
+  WHEN q2 IS NOT NULL AND TRIM(q2) <> '' AND split(trim(q2), ':')[0] RLIKE '^[0-9]+$'
+  THEN CAST(split(trim(q2), ':')[0] AS INT) * 60000
+  ELSE 0
+END AS q2_minute,
+
+CASE
+  WHEN q2 IS NOT NULL AND TRIM(q2) <> '' AND split(trim(q2), ':')[0] RLIKE '^[0-9]+$'
+       AND size(split(q2, ':')) > 1      
+  THEN CAST(get(split(get(split(q2, ':'), 1), '\\.'), 0) AS INT) * 1000
+  ELSE 0
+END AS q2_sec,
+
+CASE
+  WHEN q2 IS NOT NULL AND TRIM(q2) <> '' AND split(trim(q2), ':')[0] RLIKE '^[0-9]+$'
+       AND size(split(q2, ':')) > 1      
+  THEN CAST(get(split(get(split(q2, ':'), 1), '\\.'), 1) AS INT) 
+  ELSE 0
+END AS q2_ms,
+
+CASE 
+  WHEN q3 IS NOT NULL AND TRIM(q3) <> '' AND split(trim(q3), ':')[0] RLIKE '^[0-9]+$'
+  THEN CAST(split(trim(q3), ':')[0] AS INT) * 60000
+  ELSE 0
+END AS q3_minute,
+CASE
+  WHEN q3 IS NOT NULL AND TRIM(q3) <> '' AND split(trim(q3), ':')[0] RLIKE '^[0-9]+$'
+       AND size(split(q3, ':')) > 1      
+  THEN CAST(get(split(get(split(q3, ':'), 1), '\\.'), 0) AS INT) * 1000
+  ELSE 0
+END AS q3_sec,
+
+CASE
+  WHEN q3 IS NOT NULL AND TRIM(q3) <> '' AND split(trim(q3), ':')[0] RLIKE '^[0-9]+$'
+       AND size(split(q3, ':')) > 1      
+  THEN CAST(get(split(get(split(q3, ':'), 1), '\\.'), 1) AS INT) 
+  ELSE 0
+END AS q3_ms
+
+FROM f1_data_lakehouse.bronze.qualifying q
+
+)
+ ),
+    
+ 
+    -- Helper CTE: aggregate pit stop stats per race + driver
+    pit_agg AS (
+        SELECT
+            raceId,
+            driverId,
+            COUNT(*) AS pit_stop_count,
+            SUM(milliseconds) AS total_pit_time_ms,
+            AVG(CAST(milliseconds AS DECIMAL)) AS avg_pit_time_ms
+        FROM f1_data_lakehouse.bronze.pit_stops
+        GROUP BY raceId, driverId
+    ),
+ 
+    -- Helper CTE: driver championship standings for this race
+    driver_standings AS (
+        SELECT
+            raceId,
+            driverId,
+            points     AS driver_champ_points,
+            position   AS driver_champ_position,
+            wins       AS driver_champ_wins
+        FROM f1_data_lakehouse.bronze.driver_standings
+    ),
+ 
+    -- Helper CTE: constructor race-level points
+    constructor_pts AS (
+        SELECT
+            raceId,
+            constructorId,
+            points AS constructor_race_points
+        FROM f1_data_lakehouse.bronze.constructors_results
+    )
+ 
+    -- MAIN INSERT — delete + reload for the target race(s), then insert
+    -- (full truncate-reload pattern; swap for MERGE if you need idempotency)
+
     SELECT
         -- Dimension surrogate key lookups
         dr.race_key,
@@ -302,5 +302,4 @@ FROM f1_data_lakehouse.bronze.qualifying q
     WHERE (race_id IS NULL OR r.raceId = race_id);
  
 END
-
- 
+;
