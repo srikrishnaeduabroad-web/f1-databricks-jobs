@@ -30,8 +30,7 @@ BEGIN
                                -- or leave NULL to reload everything
                                              
   TRUNCATE TABLE f1_data_lakehouse.silver.FACT_RACE_RESULT;
- 
-    INSERT INTO f1_data_lakehouse.silver.FACT_RACE_RESULT (
+   INSERT INTO f1_data_lakehouse.silver.FACT_RACE_RESULT (
         race_key,
         driver_key,
         constructor_key,
@@ -81,7 +80,7 @@ BEGIN
         -- Derived
         positions_gained
     )
-     WITH  qualifying_ms AS (
+       WITH  qualifying_ms AS (
         SELECT
         raceId,
         driverId,
@@ -199,7 +198,7 @@ FROM f1_data_lakehouse.bronze.qualifying q
  
     -- MAIN INSERT — delete + reload for the target race(s), then insert
     -- (full truncate-reload pattern; swap for MERGE if you need idempotency)
-
+SELECT * FROM (
     SELECT
         -- Dimension surrogate key lookups
         dr.race_key,
@@ -220,11 +219,26 @@ FROM f1_data_lakehouse.bronze.qualifying q
         q.q2_time_ms,
         q.q3_time_ms,
         -- Best qualifying time = lowest non-null among Q1/Q2/Q3
-        CASE
-            WHEN q1_time_ms < q2_time_ms AND q1_time_ms < q3_time_ms THEN q.q1_time_ms
-            WHEN q2_time_ms < q1_time_ms AND q2_time_ms < q3_time_ms THEN q.q2_time_ms
-            ELSE q.q3_time_ms
-        END AS  best_qualifying_time_ms,
+CASE 
+    -- 1. Is Q1 the winner? (Must be > 0 AND (smaller than Q2 or Q2 is 0) AND (smaller than Q3 or Q3 is 0))
+    WHEN q1_time_ms > 0 
+         AND (q1_time_ms <= q2_time_ms OR q2_time_ms = 0) 
+         AND (q1_time_ms <= q3_time_ms OR q3_time_ms = 0) 
+         THEN q1_time_ms
+
+    -- 2. Is Q2 the winner? (Must be > 0 AND (smaller than Q1 or Q1 is 0) AND (smaller than Q3 or Q3 is 0))
+    WHEN q2_time_ms > 0 
+         AND (q2_time_ms <= q1_time_ms OR q1_time_ms = 0) 
+         AND (q2_time_ms <= q3_time_ms OR q3_time_ms = 0) 
+         THEN q2_time_ms
+
+    -- 3. Is Q3 the winner? (If it's > 0 and the others weren't smaller, it's the winner)
+    WHEN q3_time_ms > 0 
+         THEN q3_time_ms
+
+    -- 4. Fallback if everything is 0
+    ELSE NULL 
+END AS best_qualifying_time_ms,
  
         -- Grid position from results (official grid, post-penalties)
         CAST(r.grid AS TINYINT) AS grid_position,
@@ -299,7 +313,7 @@ FROM f1_data_lakehouse.bronze.qualifying q
     LEFT JOIN constructor_pts  cp    ON cp.raceId = r.raceId  AND cp.constructorId = r.constructorId
  
     -- Optional filter for incremental/targeted load
-    WHERE (race_id IS NULL OR r.raceId = race_id);
- 
+    WHERE (race_id IS NULL OR r.raceId = race_id)
+ ) WHERE  best_qualifying_time_ms IS NOT NULL ;
 END
 ;
