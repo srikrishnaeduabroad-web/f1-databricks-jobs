@@ -48,22 +48,18 @@ Tableau                       ← Dashboards & Analysis
 
 
 f1-data-lakehouse/
-│
-├── README.md
-├── ingestion/
-│   └── ingest_bronze.py              ← PySpark metadata-driven ingestion notebook
-├── stored_procedures/
-│   ├── sp_load_dim_circuit.sql
-│   ├── sp_load_dim_constructor.sql
-│   ├── sp_load_dim_date.sql
-│   ├── sp_load_dim_driver.sql
-│   ├── sp_load_dim_race.sql
-│   └── sp_load_fact_race_result.sql
-├── architecture/
-│   └── medallion_diagram.png
 
+ingestion/file_ingestion.py          # PySpark metadata-driven ingestion notebook
 
----
+stored_procedures/
+  sp_load_dim_circuit.sql
+  sp_load_dim_constructor.sql
+  sp_load_dim_date.sql
+  sp_load_dim_driver.sql
+  sp_load_dim_race.sql
+  sp_load_fact_race_result.sql
+
+architecture - medallion_diagram.png
 
 ## How It Works
 
